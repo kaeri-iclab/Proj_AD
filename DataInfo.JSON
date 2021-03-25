@@ -4,7 +4,10 @@
         "DIM": 6,
         "SAMPLING_PERIOD": 0.02,
         "TRJ_CLASS":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30],
-        "STEP_CLASS":[0,1,2,3,4,5,6,7,8,9,10,11,12]
+        "STEP_CLASS":[0,1,2,3,4,5,6,7,8,9,10,11,12], 
+        "STEP_CLASS_LABEL":{"0":"NO_LABEL","1":"WALKING", "2":"WALKING_UPSTAIRS", "3": "WALKING_DOWNSTAIRS", 
+            "4": "SITTING", "5": "STANDING", "6": "LAYING", "7": "STAND_TO_SIT", "8": "SIT_TO_STAND",
+            "9": "SIT_TO_LIE", "10": "LIE_TO_SIT", "11": "STAND_TO_LIE", "12": "LIE_TO_STAND"}
     }
     
 }

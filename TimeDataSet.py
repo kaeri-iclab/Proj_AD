@@ -23,35 +23,53 @@ class TimeseriesAnomalyDataset(torch.utils.data.Dataset):
         self.SAMPRATE = samprate
         self.STRIDE = stride
 
+        # Load pretrained sklearn scaler
         if scaler is not None:
             with open(self._ROOT_+'/scaler.pkl','rb') as f: 
                 self.SCALER = pickle.load(f)[scaler]
         else:
             self.SCALER = None
-
+        
+        # Create file list 
         self.file_list=[]
         for i in self.NORM_TRJ_CLASS:
-            self.file_list += glob.glob(self._ROOT_+f'/{i}/*')
+            self.file_list += glob.glob(self._ROOT_+f'/{i}/*.pkl')
 
-        # Create list of sampled (with sampling rate of self.SAMPRATE) data
-        self.X_DATA = []
-        X_NORMAL = []
+        # Load and manipulate data
+        # TODO : Add Numpy version
+        self.X_DATA = []  # To save np.array of sampled trajectory
+        X_NORMAL = []  # To create index mapper idx > (TRJ index, STP index)
+
         for i in self.file_list:
             with open(i,'rb') as f:
-                temp=pickle.load(f)[::self.SAMPRATE] #self.SAMPRATE
-                temp.reset_index(drop=True,inplace=True)
-                if self.SCALER is not None:
-                    scaled_temp = self.SCALER.transform(np.array(temp)[:,:-1])                
-                else:
-                    scaled_temp = np.array(temp)[:,:-1]    
-                self.X_DATA.append(scaled_temp) 
-                normal_temp=temp[temp.cls.isin(self.NORM_STEP_CLASS)]
-                X_NORMAL.append(normal_temp[normal_temp.index>=(self.WINDOW-1)][::self.STRIDE].cls) 
+                temp=pickle.load(f)[::self.SAMPRATE] # read dataframe with samprate interval
+            temp.reset_index(drop=True,inplace=True) # reset index
+            
+            # Normalizing variable except the last column (i.e., cls)
+            if self.SCALER is not None:
+                scaled_temp = self.SCALER.transform(np.array(temp)[:,:-1])                
+            else:
+                scaled_temp = np.array(temp)[:,:-1]                
+            self.X_DATA.append(scaled_temp) 
+
+            # Select row where STEP_CLASS defined as NORMAL
+            normal_temp=temp[temp.iloc[:,-1].isin(self.NORM_STEP_CLASS)]
+         
+            # Among selected rows, get class information with stride, where the index is greater than WINDOW-1)
+            # e.g., if window is 10, we can read 0~9 (len=10), but not -1~8
+            X_NORMAL.append(normal_temp[normal_temp.index>=(self.WINDOW-1)][::self.STRIDE].iloc[:,-1]) 
+        
+        # Convert list to dataframe where level 0 is TRJ index and level 1 is STEP index    
         self.NORM_STEP_CLASS_INFO = pd.concat(X_NORMAL,keys=range(len(X_NORMAL))).reset_index()    
 
     def __len__(self):
         return(len(self.NORM_STEP_CLASS_INFO))
     
     def __getitem__(self, idx): 
+        # idx is given by data loader
+        # get information from NROM_STEP_CLASS_INFO
         tr_idx, step_idx, step_cls = self.NORM_STEP_CLASS_INFO.loc[idx] 
-        return torch.Tensor(self.X_DATA[tr_idx][step_idx-self.WINDOW+1:step_idx,:]), torch.Tensor([step_cls])
+
+        # Create windowed data from self.X_DATA and return    
+        # from tr_idx-th time series data, if step_idx=10, window=5, get value 6~10, i.e., 6:11
+        return torch.Tensor(self.X_DATA[tr_idx][step_idx-self.WINDOW+1:step_idx+1,:]), torch.Tensor([step_cls])
