@@ -1,24 +1,30 @@
 #%%
-import os
+import os, glob, json, pickle
+import pandas as pd
+import numpy as np
 
 #torch related
 import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
-from torchvision import transforms
+
+#pytorch lightning
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
+#logging
+import wandb
+from pytorch_lightning.loggers import WandbLogger
+
 # import custom class for time series dataset
-from TimeDataSet import TimeseriesAnomalyDataset
+from TimeDataSet_with_option import TimeseriesAnomalyDataset
 
 # others
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 #%% 
 # Autoencoder and LSTM autoencoder example with pytorch lightning
-
 class LitAutoEncoder(pl.LightningModule):
     """
     Autoencoder :
@@ -37,6 +43,9 @@ class LitAutoEncoder(pl.LightningModule):
         self.window = window
         self.dim = dim
         self.latdim=latdim
+
+        # log hyperparameters
+        self.save_hyperparameters()
         # autoencoder example
         self.encoder = nn.Sequential(
             nn.Linear(self.window*self.dim,512),
@@ -172,7 +181,7 @@ TARGET = 'HAR'
 AB_CLASS = [1,2,3]
 WINDOW = 128
 SAMPRATE = 2
-STRIDE = 62
+STRIDE = 1
 SCALE = 'STSC' # 'STSC' : Standard scaler, 'MMSC' : Min-max scaller, None : No normalizing 
 Z_DIM = 2
 
@@ -184,9 +193,9 @@ DIM = DataInfo[TARGET]['DIM']
 
 # Create custom dataset class from pre-processed data
 dataset = TimeseriesAnomalyDataset('HAR',samprate=SAMPRATE, window=WINDOW, stride = STRIDE, scaler=SCALE,  
-            json_root = './DataInfo.JSON', ABNORM_STEP_CLASS=AB_CLASS)
+            json_root = './DataInfo.JSON', ABNORM_STEP_CLASS=AB_CLASS,timestamp=False,fileformat='pkl',transient=False)
 dataset_ab = TimeseriesAnomalyDataset('HAR',samprate=SAMPRATE, window=WINDOW, stride = STRIDE, scaler=SCALE,
-            json_root = './DataInfo.JSON', ABNORM_STEP_CLASS=NORM_CLASS)
+            json_root = './DataInfo.JSON', ABNORM_STEP_CLASS=NORM_CLASS,timestamp=False,fileformat='pkl',transient=False)
 
 # Split data into train, val, test_in (normal samples), test_out (abnormal samples)
 # n_test_in == n_test_out, n_train = 80%, n_val = 20%
@@ -211,7 +220,7 @@ autoencoder = LitAutoEncoder(window=WINDOW, dim=DIM, latdim=Z_DIM)
 
 # train model
 # trainer = pl.Trainer(gpus=[2], max_epochs=100,callbacks=[early_stopping])
-trainer = pl.Trainer(gpus=[2], max_epochs=10)
+trainer = pl.Trainer(gpus=[3], max_epochs=10)
 trainer.fit(autoencoder, train_loader, val_dataloaders = val_loader)
 
 #%%
@@ -239,3 +248,25 @@ plt.legend()
 #%%
 plt.plot(scores)
 plt.plot(label)
+
+
+#%%
+STEP_CLASS = DataInfo[TARGET]['STEP_CLASS']
+
+dataset_list = []
+for i in range(13):
+    NORM_CLASS = [i]
+    AB_CLASS = [x for x in STEP_CLASS if x not in NORM_CLASS]
+    dataset =TimeseriesAnomalyDataset('HAR',samprate=SAMPRATE, window=WINDOW, stride = STRIDE, scaler=SCALE,
+            json_root = './DataInfo.JSON', ABNORM_STEP_CLASS=AB_CLASS) 
+    dataset_list.append(dataset)
+
+# %%
+for ind, i in enumerate(dataset_list):
+    # print(len(i))
+    summation = 0
+
+    for j in range(len(i)):
+        summation+=i.__getitem__(j)[0].sum().numpy()
+    print(ind, summation)
+# %%
